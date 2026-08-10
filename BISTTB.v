@@ -1,4 +1,4 @@
-`include "BIST.v"
+`include "controller.v"
 
 // ----------------Тестбенч для однопортовой памяти------------------
 module TB();
@@ -21,30 +21,28 @@ module TB();
 // ----------------------------------------
 
 // -----------------------Testing module instantiation-----------------------
-    reg  ce, we;
-    reg  [$clog2(`DEPTH) - 1:0]  addr;
-    reg  [`WIDTH - 1:0]          data_in;
-    wire [`WIDTH - 1:0]          data_out;
-    reg dump;
-    wire Finish, AllCorrect, err;
-    reg Enable;
+    reg  en;
+    wire TestFinish;
+    wire ErrOnFirstCheck;
+    wire ErrOnSecondCheck;
 
-    BIST #(
+    controller #(
+        .DEPTH(`DEPTH),
+        .WIDTH(`WIDTH),
         .DELAY_TICKS(`DELAY_TICKS)
-    ) TB_BIST (
+    ) TB_controller (
         .clock(clock),
-        .Enable(Enable),
         .reset(reset),
-
-        .AllCorrect(AllCorrect),
-        .err(err),
-        .Finish(Finish)
+        .en(en),
+        .TestFinish(TestFinish),
+        .ErrOnFirstCheck(ErrOnFirstCheck),
+        .ErrOnSecondCheck(ErrOnSecondCheck)
     );
 // ---------------------------------------------------------------------------
 
 // ----------------------------Main Testing-----------------------------------
     initial begin: running_tests
-        Enable <= 0;
+        en <= 0;
         
         reset  <= 0;
         repeat (2) @(posedge clock);        
@@ -52,11 +50,11 @@ module TB();
         repeat (2) @(posedge clock);        
         reset  <= 0;
 
-        Enable <= 1;
+        en <= 1;
         @(posedge clock);
-        Enable <= 0;
+        en <= 0;
 
-        #1000;     
+        #3000;     
         $finish;  
     end
 endmodule
