@@ -2,6 +2,19 @@
 `include "Memory.v"
 `include "GetBitPos.v"
 
+module dontuse_memory #(
+    parameter DEPTH = `DEPTH,
+    parameter WIDTH = `WIDTH
+)(
+    input clock,
+    input reset,
+
+    input ce,
+    input err_en,
+    input [`ADDR_W - 1:0] DefectRow
+);
+endmodule
+
 // ---------------------------Управляющий модуль для BIST и памяти-------------------------------
 // организует последовательность проверок:
 // Первый запуск BIST -> проверка результата -> если ошибок нет, заканчиваем;
@@ -13,6 +26,14 @@
 // INPUTS:      clock             - тактовый сигнал
 //              en                - запуск всей проверки
 //              reset             - синхронный сброс в IDLE
+// MERMORY_IN:  data_out          - считанные данные
+//              red_done          - флаг завершения ремонта
+// MEMORY_OUT:  ce                - флаг включения чипа (chip enable)
+//              we                - флаг включения записи (write enable)
+//              red_en            - импульс включения ремонта
+//              DefectColumn      - номер дефектной колонки, которую нужно чинить
+//              addr              - адрес обращения
+//              data_in           - входные данные для записи
 // OUTPUTS:     TestFinish        - вся последовательность(обе проверки) завершена
 //              ErrOnFirstCheck   - была ошибка при первом прогоне(до ремонта)
 //              ErrOnSecondCheck  - ошибка осталась и после ремонта
@@ -27,20 +48,24 @@ module controller #(
     input reset,
 
     output TestFinish,
-    output reg ErrOnFirstCheck,
-    output reg ErrOnSecondCheck
+
+// for memory interface
+    output ce,
+    output we,
+    output red_en,
+    output [`DATA_W - 1:0] DefectColumn,
+    output [`ADDR_W - 1:0] addr,
+    output [WIDTH   - 1:0] data_in,
+
+    input  [WIDTH   - 1:0] data_out,
+    input red_done
 );
 
 
 // -----------------------Testing module instantiation-----------------------
-    wire ce, we;
     wire was_err, Finish;
-    wire  [`ADDR_W - 1:0]  addr;
-    wire  [`ADDR_W - 1:0]  DefectAddr;
-    wire  [`DATA_W - 1:0]  DefectColumn;
-    wire  [WIDTH   - 1:0]  data_in;
-    wire  [WIDTH   - 1:0]  data_out;
-    reg Enable;
+    wire  [`ADDR_W - 1:0]  DefectRow;
+    wire Enable;
 
     BIST #(
         .DELAY_TICKS(DELAY_TICKS)
@@ -50,9 +75,10 @@ module controller #(
         .reset(reset),
 
         .Finish(Finish),
-        .DefectAddr(DefectAddr),
+        .DefectRow(DefectRow),
         .DefectColumn(DefectColumn),
         .was_err(was_err),
+        .new_err(new_err),
 
         .ce(ce),
         .we(we),
@@ -62,22 +88,19 @@ module controller #(
     );
 // ---------------------------------------------------------------------------
 
-// --------------RAM module instantiation----------------
-    reg red_en;
-    memory RAM (
+
+// ---------------------DONTUSE interface------------------------
+    reg dontuse_rows_en;
+    dontuse_memory DontUse (
         .clock(clock),
         .reset(reset),
-        .ce(ce),
-        .we(we),
-        .addr(addr),
-        .data_in(data_in),
-        .red_en(red_en),
-        .DefectColumn(DefectColumn),
 
-        .data_out(data_out),
-        .red_done(red_done)
+        .ce(dontuse_rows_en),
+        .err_en(new_err),
+        .DefectRow(DefectRow)
     );
-// ------------------------------------------------------
+// --------------------------------------------------------------
+
 
     localparam IDLE         = 'h0;
     localparam CHECK_1      = 'h1;
@@ -86,6 +109,7 @@ module controller #(
     localparam WAIT         = 'h4;
     localparam CHECK_2      = 'h5;
     localparam FINISH       = 'h6;
+
 
 // ---------------------------------------State---------------------------------------------
     reg  [2:0] state;
@@ -109,45 +133,14 @@ module controller #(
 // -----------------------------------------------------------------------------------------
 
     assign TestFinish = (state == FINISH);
+    assign red_en     = (state == SEND_RED_1);
+    assign Enable     = (is_IDLE) ? en : (state == SEND_RED_2);
 
-// ----------------------------------Errors--------------------------------------------
-    always @(posedge clock)
-    if (reset) begin
-        ErrOnFirstCheck  <= 0;
-        ErrOnSecondCheck <= 0;
-    end else begin
-        ErrOnFirstCheck  <= ErrOnFirstCheck  | (state == CHECK_1 & Finish & was_err);
-        ErrOnSecondCheck <= ErrOnSecondCheck | (state == CHECK_2 & Finish & was_err);
-    end
-// ------------------------------------------------------------------------------------
-
-
-// ---------------------Enable and redundancy enable signals---------------------------
     always @(posedge clock) begin
-        if (reset) begin
-            Enable <= 0;
-            red_en <= 0;
-        end else begin
-            case (state)
-                IDLE:       Enable <= en;
-                CHECK_1:    Enable <= 0;
-                SEND_RED_1: red_en <= 1;
-                
-                SEND_RED_2: begin
-                    red_en <= 0;
-                    Enable <= 1;
-                end
-
-                WAIT, CHECK_2: Enable <= 0;
-                FINISH:  Enable <= en;
-
-                default: begin
-                    red_en <= 'bx;
-                    Enable <= 'bx;
-                end
-            endcase
-        end
+        if (reset)
+            dontuse_rows_en <= 0;
+        else
+            dontuse_rows_en <= (state == CHECK_2 & state != FINISH);
     end
-// ------------------------------------------------------------------------------------
     
 endmodule

@@ -2,6 +2,8 @@
 
 // ----------------Тестбенч для однопортовой памяти------------------
 module TB();
+    localparam WIDTH = `WIDTH;
+    localparam DEPTH = `DEPTH;
     reg reset;
 // -----------clock initializing-----------
     reg clock;
@@ -23,22 +25,52 @@ module TB();
 // -----------------------Testing module instantiation-----------------------
     reg  en;
     wire TestFinish;
-    wire ErrOnFirstCheck;
-    wire ErrOnSecondCheck;
+
+    wire ce, we, red_en;
+    wire [`DATA_W - 1:0] DefectColumn;
+    wire [`ADDR_W - 1:0] addr;
+    wire [WIDTH  - 1:0] data_in;
+    wire [WIDTH  - 1:0] data_out;
+    wire red_done;
 
     controller #(
-        .DEPTH(`DEPTH),
-        .WIDTH(`WIDTH),
+        .DEPTH(DEPTH),
+        .WIDTH(WIDTH),
         .DELAY_TICKS(`DELAY_TICKS)
     ) TB_controller (
         .clock(clock),
         .reset(reset),
         .en(en),
         .TestFinish(TestFinish),
-        .ErrOnFirstCheck(ErrOnFirstCheck),
-        .ErrOnSecondCheck(ErrOnSecondCheck)
+
+        .ce(ce),
+        .we(we),
+        .red_en(red_en),
+        .DefectColumn(DefectColumn),
+        .addr(addr),
+        .data_in(data_in),
+        .data_out(data_out),
+        .red_done(red_done)
     );
 // ---------------------------------------------------------------------------
+
+    memory #(
+        .DEPTH(`DEPTH),
+        .WIDTH(`WIDTH)
+    ) TB_memory (
+        .clock(clock),
+        .reset(reset),
+
+        .ce(ce),
+        .we(we),
+        .red_en(red_en),
+
+        .DefectColumn(DefectColumn),
+        .addr(addr),
+        .data_in(data_in),
+        .data_out(data_out),
+        .red_done(red_done)
+    );
 
 // ----------------------------Main Testing-----------------------------------
     initial begin: running_tests

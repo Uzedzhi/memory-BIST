@@ -21,7 +21,8 @@
 // OUTPUTS:     Finish        - тест завершен
 //              was_err       - было хотя бы одно несовпадение при чтении
 //              was_fatal_err - ошибка в нескольких битах
-//              DefectAddr    - адрес строки со сбоем
+//              new_err       - ошибка только что произошла(флаг валидности DefectRow/DefectColumn)
+//              DefectRow     - адрес строки со сбоем
 //              DefectColumn  - позиция сбойного бита в строке
 //              ce, we        - управление памятью
 //              AddrCounter   - текущий адрес обращения к памяти
@@ -40,7 +41,8 @@ module BIST #(
     output Finish,
     output reg was_err,
     output reg was_fatal_err,
-    output [`ADDR_W - 1:0] DefectAddr,
+    output reg new_err,
+    output [`ADDR_W - 1:0] DefectRow,
     output [`DATA_W - 1:0] DefectColumn,
 
     // to memory
@@ -49,6 +51,7 @@ module BIST #(
     output reg [`ADDR_W - 1:0] AddrCounter,
     output reg [WIDTH   - 1:0] data_in,
     input      [WIDTH   - 1:0] data_out
+
 );
 // -------------localparams for FSM state----------------
     localparam [3:0] IDLE        = 'h0; // state after reset, Enable -> INIT0
@@ -91,13 +94,13 @@ module BIST #(
     always @(posedge clock)
         was_READ <= (reset) ? 0 : is_READ;
 
-    reg err;
+    wire err = was_READ & (ExpValue != data_out);
     always @(posedge clock)
         if (reset) begin
             was_err <= 0;
-            err     <= 0;
+            new_err <= 0;
         end else begin
-            err     <= was_READ & (ExpValue != data_out);
+            new_err <= err;
             was_err <= was_err | err;
         end
 // --------------------------------------------------------------
@@ -119,13 +122,13 @@ module BIST #(
     always @(posedge clock)
         if (reset)
             was_fatal_err <= 0;
-        else    
-            was_fatal_err <= was_fatal_err | err & ~is_onehot;
+        else
+            was_fatal_err <= (state == IDLE) ? 0 : (was_fatal_err | new_err & ~is_onehot);
 // --------------------------------------------------------------
 
 // -------------------------Defects------------------------------
     assign DefectColumn = (err) ? Column          : DefectColumn; 
-    assign DefectAddr   = (err) ? AddrCounter - 1 : DefectAddr;  // -1 because of timing
+    assign DefectRow    = (err) ? AddrCounter - 1 : DefectRow;  // -1 because of timing
 // --------------------------------------------------------------
 
 // -----------------------AddrCounter----------------------------

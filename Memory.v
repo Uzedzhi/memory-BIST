@@ -33,7 +33,7 @@ module memory #(
     input      [`ADDR_W  - 1:0] addr,         
     input      [WIDTH   - 1:0] data_in,
     output reg [WIDTH   - 1:0] data_out,
-    output red_done
+    output reg red_done
 );
     // ram - внутренняя память модуля
     reg [WIDTH   - 1:0] ram [0:DEPTH - 1];
@@ -56,10 +56,14 @@ module memory #(
             for (genvar j = 0; j < WIDTH; j = j+1) begin
                 always @(posedge clock) begin
                     if (ce & we & addr == i) begin
-                        if (was_red_en & j == DefectColumnInner)
-                            SpareColumn[i]  <= data_in[j];
-                        else 
-                            ram[i][j]       <= data_in[j];
+                        if (was_red_en & j == DefectColumnInner) begin
+                            SpareColumn[i] <= data_in[j];
+                        end else begin
+                            if (i == `DEFECT_ROW & j == `DEFECT_COLUMN)
+                                ram[i][j] <= ~data_in[j];
+                            else
+                                ram[i][j] <=  data_in[j];
+                        end
                     end
                 end
             end
@@ -72,20 +76,18 @@ module memory #(
         for (genvar j = 0; j < WIDTH; j = j+1) begin
             always @(posedge clock) begin
                 if (ce & ~we) begin // только чтение
-                    if (was_red_en & j == DefectColumnInner)
+                    if (was_red_en & j == DefectColumnInner) begin
                         data_out[j] <= SpareColumn[addr];
-                    else 
+                    end else
                         data_out[j] <= ram[addr][j];
                 end
             end
         end
     endgenerate
 
-    reg red_done_r;
     always @(posedge clock)
-        if (reset) red_done_r <= 0;
-        else       red_done_r <= red_en;
-    assign red_done = red_done_r;
+        if (reset) red_done <= 0;
+        else       red_done <= red_en;
 
     always @(posedge clock) begin
         DefectColumnInner <= (red_en) ? DefectColumn : DefectColumnInner;
