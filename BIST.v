@@ -42,8 +42,8 @@ module BIST #(
     output reg was_err,
     output reg was_fatal_err,
     output reg new_err,
-    output [`ADDR_W - 1:0] DefectRow,
-    output [`DATA_W - 1:0] DefectColumn,
+    output reg [`ADDR_W - 1:0] DefectRow,
+    output reg [`DATA_W:0] DefectColumn,
 
     // to memory
     output reg ce,
@@ -69,11 +69,12 @@ module BIST #(
     reg  [$clog2(DELAY_TICKS)   - 1:0]  DelayCounter;
     reg  [$clog2(FINISH + 1)    - 1:0]  state;
     wire [$clog2(FINISH + 1)    - 1:0]  next_state;
+    reg restart;
 
     wire is_DELAY           = (state == DELAY_1 | state == DELAY_2);
     wire is_IDLE            = (state == IDLE    | state == FINISH);
-    wire is_DelayC_done     = (DelayCounter   == DELAY_TICKS - 1);
-    wire is_AddrC_done      = (AddrCounter    == DEPTH      - 1);
+    wire is_DelayC_done     = (DelayCounter == DELAY_TICKS - 1);
+    wire is_AddrC_done      = (AddrCounter  == DEPTH       - 1);
     assign Finish           = (state == FINISH);
 
 // ---------------------------state------------------------------
@@ -85,24 +86,7 @@ module BIST #(
         if (reset)
             state <= IDLE;
         else
-            state <= next_state;
-// --------------------------------------------------------------
-
-// ---------------------------ERR--------------------------------
-    reg was_READ;
-    wire is_READ = (state == READ1 | state == READ0);
-    always @(posedge clock)
-        was_READ <= (reset) ? 0 : is_READ;
-
-    wire err = was_READ & (ExpValue != data_out);
-    always @(posedge clock)
-        if (reset) begin
-            was_err <= 0;
-            new_err <= 0;
-        end else begin
-            new_err <= err;
-            was_err <= was_err | err;
-        end
+            state <= (restart) ? INIT0 : next_state;
 // --------------------------------------------------------------
 
 // ----------------------ColumnCounter---------------------------
@@ -119,34 +103,54 @@ module BIST #(
     );
 
     assign Vec = (ExpValue ^ data_out);
-    always @(posedge clock)
-        if (reset)
-            was_fatal_err <= 0;
-        else
-            was_fatal_err <= (state == IDLE) ? 0 : (was_fatal_err | new_err & ~is_onehot);
 // --------------------------------------------------------------
 
-// -------------------------Defects------------------------------
-    assign DefectColumn = (err) ? Column          : DefectColumn; 
-    assign DefectRow    = (err) ? AddrCounter - 1 : DefectRow;  // -1 because of timing
+// ---------------------------ERR--------------------------------
+    reg was_READ;
+    wire is_READ = (state == READ1 | state == READ0);
+    always @(posedge clock)
+        was_READ <= is_READ;
+
+    wire err = was_READ & (ExpValue     != data_out);
+    always @(posedge clock) begin
+        DefectColumn <= (err) ? Column      + 1 : DefectColumn;
+        DefectRow    <= (err) ? AddrCounter - 1 : DefectRow;
+    end
+
+    wire is_fatal_err = new_err & (DefectColumn != Column + 1 | ~is_onehot);
+    always @(posedge clock)
+        if (reset | restart) begin
+            was_err         <= 0;
+            new_err         <= 0;
+            was_fatal_err   <= 0;
+        end else begin
+            new_err         <= err;
+            was_err         <= was_err | err;
+            was_fatal_err   <= was_fatal_err | is_fatal_err;
+        end
 // --------------------------------------------------------------
 
 // -----------------------AddrCounter----------------------------
     always @(posedge clock)
-        if (reset)
+        if (reset | restart)
             AddrCounter <= 0;
         else
-            AddrCounter <=  (is_IDLE | is_DELAY)    ? AddrCounter       :
-                            (~is_AddrC_done)        ? AddrCounter + 1   : 0;
+            AddrCounter <=  (is_IDLE | is_DELAY) ? AddrCounter     :
+                            (~is_AddrC_done)     ? AddrCounter + 1 : 0;
+// --------------------------------------------------------------
+
+// -------------------------Restart------------------------------
+    always @(posedge clock)
+        restart <= (state == FINISH) & Enable;
 // --------------------------------------------------------------
 
 // ----------------------Delay Counter---------------------------
     always @(posedge clock)
-        if (reset)
+        if (reset | restart)
             DelayCounter <= 0;
         else
-            DelayCounter <= (~is_DELAY)         ? DelayCounter      :
-                            (~is_DelayC_done)   ? DelayCounter + 1  : 0;
+            DelayCounter <= (~is_DELAY)       ? DelayCounter     :
+                            (~is_DelayC_done) ? DelayCounter + 1 : 0;
 // --------------------------------------------------------------
 
 // ------------------What all those states do--------------------

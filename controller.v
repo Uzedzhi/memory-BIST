@@ -39,9 +39,10 @@ endmodule
 //              ErrOnSecondCheck  - ошибка осталась и после ремонта
 // ------------------------------------------------------------------------------------------------
 module controller #(
-    parameter DEPTH         = `DEPTH,
-    parameter WIDTH         = `WIDTH,
-    parameter DELAY_TICKS   = `DELAY_TICKS
+    parameter DEPTH                     = `DEPTH,
+    parameter WIDTH                     = `WIDTH,
+    parameter DELAY_TICKS               = `DELAY_TICKS,
+    parameter RED_DELAY_MEMORY_TICKS    = `RED_DELAY_MEMORY_TICKS
 )(
     input clock,
     input en,
@@ -52,20 +53,21 @@ module controller #(
 // for memory interface
     output ce,
     output we,
-    output red_en,
-    output [`DATA_W - 1:0] DefectColumn,
+    output reg [`DATA_W:0] DefectColumnInner,
     output [`ADDR_W - 1:0] addr,
     output [WIDTH   - 1:0] data_in,
 
     input  [WIDTH   - 1:0] data_out,
-    input red_done
-);
 
+// dontuse interface
+    output dontuse_en,
+    output [`ADDR_W - 1:0] DefectRow
+);
 
 // -----------------------Testing module instantiation-----------------------
     wire was_err, Finish;
-    wire  [`ADDR_W - 1:0]  DefectRow;
     wire Enable;
+    wire [`DATA_W:0] DefectColumn;
 
     BIST #(
         .DELAY_TICKS(DELAY_TICKS)
@@ -89,26 +91,11 @@ module controller #(
 // ---------------------------------------------------------------------------
 
 
-// ---------------------DONTUSE interface------------------------
-    reg dontuse_rows_en;
-    dontuse_memory DontUse (
-        .clock(clock),
-        .reset(reset),
-
-        .ce(dontuse_rows_en),
-        .err_en(new_err),
-        .DefectRow(DefectRow)
-    );
-// --------------------------------------------------------------
-
-
     localparam IDLE         = 'h0;
     localparam CHECK_1      = 'h1;
-    localparam SEND_RED_1   = 'h2;
-    localparam SEND_RED_2   = 'h3;
-    localparam WAIT         = 'h4;
-    localparam CHECK_2      = 'h5;
-    localparam FINISH       = 'h6;
+    localparam SEND_RED     = 'h2;
+    localparam CHECK_2      = 'h3;
+    localparam FINISH       = 'h4;
 
 
 // ---------------------------------------State---------------------------------------------
@@ -122,25 +109,35 @@ module controller #(
 // -----------------------------------------------------------------------------------------
 
 // ------------------------------------Next State------------------------------------------
+    reg [$clog2(RED_DELAY_MEMORY_TICKS) - 1:0] MemoryWaitCounter;
     wire is_IDLE = (state == IDLE) | (state == FINISH);
-    assign next_state = (is_IDLE             & en)                  ? CHECK_1     :
-                        (state == CHECK_1    & Finish & ~was_err)   ? FINISH      :
-                        (state == CHECK_1    & Finish &  was_err)   ? SEND_RED_1  :
-                        (state == SEND_RED_1)                       ? SEND_RED_2  :
-                        (state == SEND_RED_2 & red_done)            ? WAIT        :
-                        (state == WAIT       & Finish == 0)         ? CHECK_2     :
-                        (state == CHECK_2    & Finish)              ? FINISH      : state;
+    assign next_state = (is_IDLE             & en)                                          ? CHECK_1     :
+                        (state == CHECK_1    & Finish & ~was_err)                           ? FINISH      :
+                        (state == CHECK_1    & Finish &  was_err)                           ? SEND_RED    :
+                        (state == SEND_RED   & MemoryWaitCounter == RED_DELAY_MEMORY_TICKS) ? CHECK_2     :
+                        (state == CHECK_2    & Finish)                                      ? FINISH      : state;
 // -----------------------------------------------------------------------------------------
 
     assign TestFinish = (state == FINISH);
-    assign red_en     = (state == SEND_RED_1);
-    assign Enable     = (is_IDLE) ? en : (state == SEND_RED_2);
+    assign Enable     = (next_state == CHECK_1 | next_state == CHECK_2);
 
-    always @(posedge clock) begin
+// --------------------------------------Memory----------------------------------------------
+    always @(posedge clock)
         if (reset)
-            dontuse_rows_en <= 0;
+            DefectColumnInner <= 0;
         else
-            dontuse_rows_en <= (state == CHECK_2 & state != FINISH);
-    end
-    
+            DefectColumnInner <= (state == SEND_RED) ? DefectColumn : DefectColumnInner;
+// ------------------------------------------------------------------------------------------
+
+// --------------------------------MemoryWaitCounter-----------------------------------------
+    always @(posedge clock)
+        if (reset)
+            MemoryWaitCounter <= 0;
+        else
+            MemoryWaitCounter <= (state == SEND_RED) ? MemoryWaitCounter + 1 : MemoryWaitCounter;
+// ------------------------------------------------------------------------------------------
+
+// --------------------------------------DontUse---------------------------------------------
+    assign dontuse_en = new_err; // data is valid when there is a new error
+// ------------------------------------------------------------------------------------------
 endmodule

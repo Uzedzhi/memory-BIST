@@ -11,7 +11,7 @@ module TB();
         clock = 0;
     end
     always begin
-        #10; clock = ~clock;
+        #`CLOCK_TICK; clock = ~clock;
     end
 // ----------------------------------------
 
@@ -26,8 +26,8 @@ module TB();
     reg  en;
     wire TestFinish;
 
-    wire ce, we, red_en;
-    wire [`DATA_W - 1:0] DefectColumn;
+    wire ce, we;
+    wire [`DATA_W:0] DefectColumn;
     wire [`ADDR_W - 1:0] addr;
     wire [WIDTH  - 1:0] data_in;
     wire [WIDTH  - 1:0] data_out;
@@ -45,31 +45,27 @@ module TB();
 
         .ce(ce),
         .we(we),
-        .red_en(red_en),
-        .DefectColumn(DefectColumn),
+        .DefectColumnInner(DefectColumn),
         .addr(addr),
         .data_in(data_in),
-        .data_out(data_out),
-        .red_done(red_done)
+        .data_out(data_out)
     );
 // ---------------------------------------------------------------------------
 
     memory #(
         .DEPTH(`DEPTH),
-        .WIDTH(`WIDTH)
+        .WIDTH(`WIDTH),
+        .DEFECT_TYPE(`_MEMORY_DEFECT_DRF_0)
     ) TB_memory (
         .clock(clock),
-        .reset(reset),
 
         .ce(ce),
         .we(we),
-        .red_en(red_en),
 
         .DefectColumn(DefectColumn),
         .addr(addr),
         .data_in(data_in),
-        .data_out(data_out),
-        .red_done(red_done)
+        .data_out(data_out)
     );
 
 // ----------------------------Main Testing-----------------------------------

@@ -19,50 +19,44 @@
 //              red_done     - флаг завершения ремонта
 // ---------------------------------------------------------------------------------
 module memory #(
-    parameter DEPTH     = `DEPTH,
-    parameter WIDTH     = `WIDTH
+    parameter DEPTH         = `DEPTH,
+    parameter WIDTH         = `WIDTH,
+    parameter DEFECT_TYPE   = `_MEMORY_DEFECT_NONE
 )(
     input clock,
-    input reset,
     input ce,
     input we,
-    input red_en,
 
 
-    input      [`DATA_W  - 1:0] DefectColumn,
-    input      [`ADDR_W  - 1:0] addr,         
+    input      [`DATA_W:0] DefectColumn,
+    input      [`ADDR_W - 1:0] addr,         
     input      [WIDTH   - 1:0] data_in,
-    output reg [WIDTH   - 1:0] data_out,
-    output reg red_done
+    output reg [WIDTH   - 1:0] data_out
 );
-    // ram - внутренняя память модуля
-    reg [WIDTH   - 1:0] ram [0:DEPTH - 1];
+    real cur_time = 0;
 
-    reg [`DATA_W - 1:0] DefectColumnInner;
+    reg [WIDTH   - 1:0] ram [0:DEPTH - 1];
     reg [DEPTH   - 1:0] SpareColumn;
     
-    reg was_red_en;
-    always @(posedge clock) 
-        if (reset)
-            was_red_en <= 0;
-        else
-            was_red_en <= was_red_en | red_en;
-
-    // много always блоков каждый проверяет что адрес совпадает 
-    // со своим номером. Если это так, то data_in записывается
-    // именно по этому номеру в память
     generate
         for (genvar i = 0; i < DEPTH; i = i+1) begin
             for (genvar j = 0; j < WIDTH; j = j+1) begin
                 always @(posedge clock) begin
                     if (ce & we & addr == i) begin
-                        if (was_red_en & j == DefectColumnInner) begin
+                        if (DefectColumn != 0 && j == DefectColumn - 1) begin
                             SpareColumn[i] <= data_in[j];
                         end else begin
-                            if (i == `DEFECT_ROW & j == `DEFECT_COLUMN)
-                                ram[i][j] <= ~data_in[j];
-                            else
-                                ram[i][j] <=  data_in[j];
+                            if (i == `DEFECT_ROW & j == `DEFECT_COLUMN) begin
+                                ram[i][j] <= (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_1)                                             ? 1 :               // stuck at 1
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_0)                                             ? 0 :               // stuck at 0
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_TF_0    & data_in[j] == 0 & ram[i][j] == 1)        ? 1 :               // failed to traisition from 1 to 0
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_TF_1    & data_in[j] == 1 & ram[i][j] == 0)        ? 0 :               // failed to traisition from 0 to 1
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_0   & $realtime - cur_time >= `_DRF_MAX_DELAY) ? 0 :               // dropped to 0 after long time with no action
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_1   & $realtime - cur_time >= `_DRF_MAX_DELAY) ? 1 : data_in[j];   // dropped to 1 after long time with no action
+                                cur_time <= $realtime;
+                            end else begin
+                                ram[i][j] <= data_in[j];
+                            end
                         end
                     end
                 end
@@ -76,22 +70,17 @@ module memory #(
         for (genvar j = 0; j < WIDTH; j = j+1) begin
             always @(posedge clock) begin
                 if (ce & ~we) begin // только чтение
-                    if (was_red_en & j == DefectColumnInner) begin
+                    if (DefectColumn != 0 & j == DefectColumn - 1)
                         data_out[j] <= SpareColumn[addr];
-                    end else
+                    else begin
+                        if (addr == `DEFECT_ROW & j == `DEFECT_COLUMN)
+                            cur_time <= $realtime;
                         data_out[j] <= ram[addr][j];
+                    end
                 end
             end
         end
     endgenerate
-
-    always @(posedge clock)
-        if (reset) red_done <= 0;
-        else       red_done <= red_en;
-
-    always @(posedge clock) begin
-        DefectColumnInner <= (red_en) ? DefectColumn : DefectColumnInner;
-    end
 endmodule
 
 `endif // _BIST_MEMORY
