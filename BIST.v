@@ -40,7 +40,7 @@ module BIST #(
     // to controller
     output Finish,
     output reg was_err,
-    output reg was_fatal_err,
+    output was_fatal_err,
     output reg new_err,
     output reg [`ADDR_W - 1:0] DefectRow,
     output reg [`DATA_W:0] DefectColumn,
@@ -113,20 +113,22 @@ module BIST #(
 
     wire err = was_READ & (ExpValue     != data_out);
     always @(posedge clock) begin
-        DefectColumn <= (err) ? Column      + 1 : DefectColumn;
-        DefectRow    <= (err) ? AddrCounter - 1 : DefectRow;
+        if (reset)
+            DefectColumn <= 0;
+        else begin
+            DefectColumn <= (err) ? Column      + 1 : DefectColumn;
+            DefectRow    <= (err) ? AddrCounter - 1 : DefectRow;
+        end
     end
 
-    wire is_fatal_err = new_err & (DefectColumn != Column + 1 | ~is_onehot);
+    wire was_fatal_err = Finish & ~was_err;
     always @(posedge clock)
         if (reset | restart) begin
             was_err         <= 0;
             new_err         <= 0;
-            was_fatal_err   <= 0;
         end else begin
             new_err         <= err;
             was_err         <= was_err | err;
-            was_fatal_err   <= was_fatal_err | is_fatal_err;
         end
 // --------------------------------------------------------------
 

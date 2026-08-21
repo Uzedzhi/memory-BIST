@@ -53,7 +53,7 @@ module controller #(
 // for memory interface
     output ce,
     output we,
-    output reg [`DATA_W:0] DefectColumnInner,
+    output [`DATA_W:0]     DefectColumnInner,
     output [`ADDR_W - 1:0] addr,
     output [WIDTH   - 1:0] data_in,
 
@@ -81,6 +81,7 @@ module controller #(
         .DefectColumn(DefectColumn),
         .was_err(was_err),
         .new_err(new_err),
+        .was_fatal_err(was_fatal_err),
 
         .ce(ce),
         .we(we),
@@ -122,11 +123,7 @@ module controller #(
     assign Enable     = (next_state == CHECK_1 | next_state == CHECK_2);
 
 // --------------------------------------Memory----------------------------------------------
-    always @(posedge clock)
-        if (reset)
-            DefectColumnInner <= 0;
-        else
-            DefectColumnInner <= (state == SEND_RED) ? DefectColumn : DefectColumnInner;
+    assign DefectColumnInner = (state == SEND_RED) ? DefectColumn : 0;
 // ------------------------------------------------------------------------------------------
 
 // --------------------------------MemoryWaitCounter-----------------------------------------
@@ -138,6 +135,6 @@ module controller #(
 // ------------------------------------------------------------------------------------------
 
 // --------------------------------------DontUse---------------------------------------------
-    assign dontuse_en = new_err; // data is valid when there is a new error
+    assign dontuse_en = state == CHECK_2 && new_err; // data is valid when there is a new error
 // ------------------------------------------------------------------------------------------
 endmodule
