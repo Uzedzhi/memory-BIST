@@ -121,7 +121,7 @@ module BIST #(
         end
     end
 
-    wire was_fatal_err = Finish & ~was_err;
+    assign was_fatal_err = Finish & ~was_err;
     always @(posedge clock)
         if (reset | restart) begin
             was_err         <= 0;

@@ -123,7 +123,7 @@ module controller #(
     assign Enable     = (next_state == CHECK_1 | next_state == CHECK_2);
 
 // --------------------------------------Memory----------------------------------------------
-    assign DefectColumnInner = (state == SEND_RED) ? DefectColumn : 0;
+    assign DefectColumnInner = (state == CHECK_1) ? 0 : DefectColumn;
 // ------------------------------------------------------------------------------------------
 
 // --------------------------------MemoryWaitCounter-----------------------------------------

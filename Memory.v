@@ -28,7 +28,7 @@ module memory #(
     input we,
 
 
-    input      [`DATA_W:0] DefectColumn,
+    input      [`DATA_W:0]     DefectColumn,
     input      [`ADDR_W - 1:0] addr,         
     input      [WIDTH   - 1:0] data_in,
     output reg [WIDTH   - 1:0] data_out
