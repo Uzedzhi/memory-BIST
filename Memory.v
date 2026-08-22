@@ -47,12 +47,10 @@ module memory #(
                             SpareColumn[i] <= data_in[j];
                         end else begin
                             if (i == `DEFECT_ROW & j == `DEFECT_COLUMN) begin
-                                ram[i][j] <= (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_1)                                             ? 1 :               // stuck at 1
-                                             (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_0)                                             ? 0 :               // stuck at 0
+                                ram[i][j] <= (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_1)                                               ? 1 :               // stuck at 1
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_SAF_0)                                               ? 0 :               // stuck at 0
                                              (DEFECT_TYPE == `_MEMORY_DEFECT_TF_0    & data_in[j] === 0 & ram[i][j] === 1)        ? 1 :               // failed to traisition from 1 to 0
-                                             (DEFECT_TYPE == `_MEMORY_DEFECT_TF_1    & data_in[j] === 1 & ram[i][j] === 0)        ? 0 :               // failed to traisition from 0 to 1
-                                             (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_0   & $realtime - cur_time >= `_DRF_MAX_DELAY) ? 0 :               // dropped to 0 after long time with no action
-                                             (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_1   & $realtime - cur_time >= `_DRF_MAX_DELAY) ? 1 : data_in[j];   // dropped to 1 after long time with no action
+                                             (DEFECT_TYPE == `_MEMORY_DEFECT_TF_1    & data_in[j] === 1 & ram[i][j] === 0)        ? 0 : data_in[j];   // dropped to 1 after long time with no action
                                 cur_time <= $realtime;
                             end else begin
                                 ram[i][j] <= data_in[j];
@@ -73,9 +71,18 @@ module memory #(
                     if (DefectColumn != 0 & j == DefectColumn - 1)
                         data_out[j] <= SpareColumn[addr];
                     else begin
-                        if (addr == `DEFECT_ROW & j == `DEFECT_COLUMN)
+                        if (addr == `DEFECT_ROW & j == `DEFECT_COLUMN) begin
+                            data_out[j] <=  ($realtime - cur_time < `_DRF_MAX_DELAY) ? ram[addr][j] :
+                                            (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_0)   ? 0            :
+                                            (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_1)   ? 1            : ram[addr][j];
+
+                            ram[addr][j] <= ($realtime - cur_time < `_DRF_MAX_DELAY) ? ram[addr][j] :
+                                            (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_0)   ? 0            :
+                                            (DEFECT_TYPE == `_MEMORY_DEFECT_DRF_1)   ? 1            : ram[addr][j];
                             cur_time <= $realtime;
-                        data_out[j] <= ram[addr][j];
+                        end else begin
+                            data_out[j] <= ram[addr][j];
+                        end
                     end
                 end
             end

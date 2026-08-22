@@ -6,7 +6,7 @@
 `define DEFECT_ROW 3
 `define DEFECT_COLUMN 2
 `define RED_DELAY_MEMORY_TICKS 5
-`define _DRF_MAX_DELAY 5 * `CLOCK_TICK
+`define _DRF_MAX_DELAY 1
 `define NUM_MARCH 9
 `define DEPTH 5
 `define WIDTH 10
